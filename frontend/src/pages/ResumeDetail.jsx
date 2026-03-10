@@ -3,8 +3,35 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import {
   ArrowLeft, Brain, Mail, Phone, MapPin, Briefcase, GraduationCap,
-  Clock, Save, Tag, X, Download, Trash2, Building, BookOpen,
+  Clock, Save, Tag, X, Download, Trash2, Building, BookOpen, FileText,
 } from 'lucide-react'
+
+// PDF viewer: only loads when user clicks "查看原文"
+function PdfViewer({ fileUrl }) {
+  const [show, setShow] = useState(false)
+  if (!show) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 text-zinc-500">
+        <FileText size={48} className="text-zinc-700" />
+        <p className="text-sm">点击查看简历原文</p>
+        <button
+          onClick={() => setShow(true)}
+          className="px-4 py-2 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-sm hover:bg-indigo-500/20 transition"
+        >
+          查看原文
+        </button>
+      </div>
+    )
+  }
+  return (
+    <iframe
+      src={fileUrl}
+      className="w-full flex-1 border-0"
+      style={{ minHeight: '100%' }}
+      title="Resume Preview"
+    />
+  )
+}
 
 const statusOptions = [
   { value: 'pending', label: '待处理', color: 'badge-pending' },
@@ -297,12 +324,8 @@ export default function ResumeDetail() {
         </div>
 
         {/* Right: PDF preview */}
-        <div className="w-1/2 bg-black/20">
-          <iframe
-            src={api.getFileUrl(id)}
-            className="w-full h-full border-0"
-            title="Resume Preview"
-          />
+        <div className="w-1/2 bg-black/20 flex flex-col">
+          <PdfViewer fileUrl={api.getFileUrl(id)} />
         </div>
       </div>
     </div>
