@@ -4,12 +4,13 @@ import asyncio
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Query, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Query, UploadFile, File, HTTPException, BackgroundTasks, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import get_db, init_db, dict_from_row
+from pydantic import BaseModel
 from models import ResumeUpdate, TagAdd, BulkAction
 from parser import (
     scan_resume_folder,
@@ -406,8 +407,13 @@ def _do_parse(resume_id: int, row: dict):
 
 
 @app.post("/api/resumes/parse-batch")
-async def parse_batch(background_tasks: BackgroundTasks, ids: list[int] | None = None):
-    """Parse multiple resumes. If ids is None, parse all unparsed."""
+async def parse_batch(background_tasks: BackgroundTasks, request: Request):
+    """Parse multiple resumes. If ids is None/empty, parse all unparsed."""
+    try:
+        body = await request.json()
+        ids = body.get("ids") if isinstance(body, dict) else None
+    except Exception:
+        ids = None
     db = get_db()
     try:
         if ids:

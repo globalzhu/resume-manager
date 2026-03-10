@@ -69,9 +69,32 @@ def scan_resume_folder() -> list[dict]:
     return files
 
 
+def _get_api_key() -> str:
+    """Load Anthropic API key from OpenClaw auth profiles or environment."""
+    import os
+    # 1. Environment variable
+    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if key:
+        return key
+    # 2. OpenClaw auth profiles
+    profiles_path = os.path.expanduser("~/.openclaw/agents/main/agent/auth-profiles.json")
+    try:
+        with open(profiles_path) as f:
+            data = json.load(f)
+        for profile in data.get("profiles", {}).values():
+            if profile.get("provider") == "anthropic" and profile.get("key"):
+                return profile["key"]
+    except Exception:
+        pass
+    return ""
+
+
 async def parse_resume_with_llm(text: str, filename_info: dict) -> dict:
     """Use Claude API to extract structured resume data."""
-    client = anthropic.Anthropic()
+    api_key = _get_api_key()
+    if not api_key:
+        raise RuntimeError("Anthropic API key not found")
+    client = anthropic.Anthropic(api_key=api_key)
 
     prompt = f"""Extract structured information from this resume. Return ONLY valid JSON with these fields:
 - name (string): candidate's full name
@@ -94,7 +117,7 @@ Resume text:
 
     try:
         message = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2000,
             messages=[{"role": "user", "content": prompt}],
         )
