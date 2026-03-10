@@ -312,8 +312,8 @@ def serve_file(resume_id: int):
             raise HTTPException(404, "File not found on disk")
         return FileResponse(
             row["filepath"],
-            filename=row["filename"],
             media_type="application/pdf",
+            headers={"Content-Disposition": "inline"},
         )
     finally:
         db.close()

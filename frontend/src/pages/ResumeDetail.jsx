@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import {
   ArrowLeft, Brain, Mail, Phone, MapPin, Briefcase, GraduationCap,
-  Clock, Save, Tag, X, Download, Trash2, Building, BookOpen,
+  Clock, Save, Tag, X, Trash2, Building, BookOpen,
 } from 'lucide-react'
 
 const statusOptions = [
@@ -121,10 +121,7 @@ export default function ResumeDetail() {
             <Brain size={15} className={resume.parse_status === 'parsing' ? 'animate-spin' : ''} />
             {resume.parse_status === 'parsing' ? '解析中...' : resume.parse_status === 'parsed' ? '重新解析' : 'AI解析'}
           </button>
-          <a href={api.getFileUrl(id)} target="_blank" rel="noopener"
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl glass text-sm text-zinc-300 hover:text-white transition">
-            <Download size={15} /> 下载
-          </a>
+
           <button onClick={handleDelete} className="p-2 rounded-xl glass text-red-400 hover:text-red-300 hover:bg-red-500/10 transition">
             <Trash2 size={15} />
           </button>
