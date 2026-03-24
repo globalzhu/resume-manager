@@ -1,10 +1,34 @@
+import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import Resumes from './pages/Resumes'
 import ResumeDetail from './pages/ResumeDetail'
+import MobileDashboard from './mobile/pages/MobileDashboard'
+import MobileResumes from './mobile/pages/MobileResumes'
+import MobileResumeDetail from './mobile/pages/MobileResumeDetail'
+import MobileLayout from './mobile/components/MobileLayout'
 
-export default function App() {
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const userAgent = navigator.userAgent.toLowerCase()
+      const isMobileDevice = /iphone|ipad|ipod|android|webos|blackberry|windows phone/.test(userAgent)
+      const isSmallScreen = window.innerWidth < 768
+      setIsMobile(isMobileDevice || isSmallScreen)
+    }
+
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  return isMobile
+}
+
+function DesktopApp() {
   return (
     <div className="flex h-screen overflow-hidden bg-mesh">
       <Sidebar />
@@ -18,4 +42,22 @@ export default function App() {
       </main>
     </div>
   )
+}
+
+function MobileApp() {
+  return (
+    <MobileLayout>
+      <Routes>
+        <Route path="/" element={<MobileDashboard />} />
+        <Route path="/resumes" element={<MobileResumes />} />
+        <Route path="/resumes/:id" element={<MobileResumeDetail />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </MobileLayout>
+  )
+}
+
+export default function App() {
+  const isMobile = useIsMobile()
+  return isMobile ? <MobileApp /> : <DesktopApp />
 }

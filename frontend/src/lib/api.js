@@ -18,6 +18,10 @@ export const api = {
     const qs = new URLSearchParams(params).toString()
     return request(`/resumes?${qs}`)
   },
+  getResumes: (params) => {
+    const qs = new URLSearchParams(params).toString()
+    return request(`/resumes?${qs}`)
+  },
   getResume: (id) => request(`/resumes/${id}`),
   updateResume: (id, data) => request(`/resumes/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteResume: (id) => request(`/resumes/${id}`, { method: 'DELETE' }),
@@ -37,6 +41,7 @@ export const api = {
 
   // File
   getFileUrl: (id) => `${BASE}/resumes/${id}/file`,
+  getResumeFileUrl: (id) => `${BASE}/resumes/${id}/file`,
 
   // Stats & Tags
   getStats: () => request('/stats'),
