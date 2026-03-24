@@ -50,4 +50,38 @@ export const api = {
 
   // Duplicates
   getDuplicates: () => request('/duplicates'),
+
+  // Positions
+  listPositions: (params) => {
+    const qs = new URLSearchParams(params).toString()
+    return request(`/positions?${qs}`)
+  },
+  getPosition: (id) => request(`/positions/${id}`),
+  createPosition: (data) => request('/positions', { method: 'POST', body: JSON.stringify(data) }),
+  updatePosition: (id, data) => request(`/positions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePosition: (id) => request(`/positions/${id}`, { method: 'DELETE' }),
+
+  // Position-Profile linking
+  linkProfile: (posId, profileId) => request(`/positions/${posId}/profiles`, { method: 'POST', body: JSON.stringify({ profile_id: profileId }) }),
+  unlinkProfile: (posId, profileId) => request(`/positions/${posId}/profiles/${profileId}`, { method: 'DELETE' }),
+
+  // Candidate Profiles
+  listProfiles: (params) => {
+    const qs = new URLSearchParams(params).toString()
+    return request(`/profiles?${qs}`)
+  },
+  getProfile: (id) => request(`/profiles/${id}`),
+  createProfile: (data) => request('/profiles', { method: 'POST', body: JSON.stringify(data) }),
+  updateProfile: (id, data) => request(`/profiles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteProfile: (id) => request(`/profiles/${id}`, { method: 'DELETE' }),
+
+  // Matching
+  matchResumes: (posId, limit = 20) => request(`/positions/${posId}/match?limit=${limit}`),
+
+  // Speech to text
+  speechToText: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return fetch(`${BASE}/speech-to-text`, { method: 'POST', body: form }).then(r => r.json())
+  },
 }

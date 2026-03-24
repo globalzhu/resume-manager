@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { Home, Users, Settings, Menu, X } from 'lucide-react'
+import { Home, Users, Briefcase, Menu, X } from 'lucide-react'
 
 const navItems = [
   { path: '/', icon: Home, label: '首页' },
   { path: '/resumes', icon: Users, label: '简历' },
+  { path: '/positions', icon: Briefcase, label: '岗位' },
 ]
 
 export default function MobileLayout({ children }) {
@@ -15,6 +16,9 @@ export default function MobileLayout({ children }) {
     if (location.pathname === '/') return 'Dashboard'
     if (location.pathname === '/resumes') return '简历列表'
     if (location.pathname.startsWith('/resumes/')) return '简历详情'
+    if (location.pathname === '/positions') return '招聘岗位'
+    if (location.pathname.startsWith('/positions/')) return '岗位详情'
+    if (location.pathname.startsWith('/profiles/')) return '候选人画像'
     return 'Resume Manager'
   }
 

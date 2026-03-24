@@ -4,9 +4,15 @@ import Sidebar from './components/Sidebar'
 import Dashboard from './pages/Dashboard'
 import Resumes from './pages/Resumes'
 import ResumeDetail from './pages/ResumeDetail'
+import Positions from './pages/Positions'
+import PositionDetail from './pages/PositionDetail'
+import ProfileForm from './pages/ProfileForm'
 import MobileDashboard from './mobile/pages/MobileDashboard'
 import MobileResumes from './mobile/pages/MobileResumes'
 import MobileResumeDetail from './mobile/pages/MobileResumeDetail'
+import MobilePositions from './mobile/pages/MobilePositions'
+import MobilePositionDetail from './mobile/pages/MobilePositionDetail'
+import MobileProfileForm from './mobile/pages/MobileProfileForm'
 import MobileLayout from './mobile/components/MobileLayout'
 
 function useIsMobile() {
@@ -37,6 +43,9 @@ function DesktopApp() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/resumes" element={<Resumes />} />
           <Route path="/resumes/:id" element={<ResumeDetail />} />
+          <Route path="/positions" element={<Positions />} />
+          <Route path="/positions/:id" element={<PositionDetail />} />
+          <Route path="/profiles/:id/edit" element={<ProfileForm />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
@@ -51,6 +60,9 @@ function MobileApp() {
         <Route path="/" element={<MobileDashboard />} />
         <Route path="/resumes" element={<MobileResumes />} />
         <Route path="/resumes/:id" element={<MobileResumeDetail />} />
+        <Route path="/positions" element={<MobilePositions />} />
+        <Route path="/positions/:id" element={<MobilePositionDetail />} />
+        <Route path="/profiles/:id/edit" element={<MobileProfileForm />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </MobileLayout>

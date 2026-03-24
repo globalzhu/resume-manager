@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, FileText } from 'lucide-react'
+import { LayoutDashboard, Users, FileText, Briefcase } from 'lucide-react'
 
 const links = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/resumes', icon: Users, label: 'Resumes' },
+  { to: '/positions', icon: Briefcase, label: 'Positions' },
 ]
 
 export default function Sidebar() {

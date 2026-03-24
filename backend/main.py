@@ -11,7 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from database import get_db, init_db, dict_from_row
 from pydantic import BaseModel
-from models import ResumeUpdate, TagAdd, BulkAction
+from models import (
+    ResumeUpdate, TagAdd, BulkAction,
+    PositionCreate, PositionUpdate,
+    ProfileCreate, ProfileUpdate, PositionProfileLink,
+)
 from parser import (
     scan_resume_folder,
     parse_filename,
@@ -582,6 +586,466 @@ def find_duplicates():
         return [dict(r) for r in rows]
     finally:
         db.close()
+
+
+# ── Positions CRUD ────────────────────────────────────────────
+
+
+@app.get("/api/positions")
+def list_positions(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    search: str = "",
+    status: str = "",
+    sort: str = "created_at",
+    order: str = "desc",
+):
+    db = get_db()
+    try:
+        conditions = []
+        params = []
+
+        if search:
+            like = f"%{search}%"
+            conditions.append("(title LIKE ? OR department LIKE ? OR location LIKE ? OR description LIKE ?)")
+            params.extend([like] * 4)
+
+        if status:
+            conditions.append("status = ?")
+            params.append(status)
+
+        where = " AND ".join(conditions) if conditions else "1=1"
+        allowed_sort = {"created_at", "updated_at", "title", "status"}
+        sort_col = sort if sort in allowed_sort else "created_at"
+        sort_order = "ASC" if order.lower() == "asc" else "DESC"
+
+        total = db.execute(f"SELECT COUNT(*) as cnt FROM positions WHERE {where}", params).fetchone()["cnt"]
+        offset = (page - 1) * page_size
+        rows = db.execute(
+            f"SELECT * FROM positions WHERE {where} ORDER BY {sort_col} {sort_order} LIMIT ? OFFSET ?",
+            params + [page_size, offset],
+        ).fetchall()
+
+        return {
+            "items": [dict_from_row(r) for r in rows],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": max(1, (total + page_size - 1) // page_size),
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/positions")
+def create_position(data: PositionCreate):
+    db = get_db()
+    try:
+        fields = data.model_dump()
+        for k, v in fields.items():
+            if isinstance(v, (list, dict)):
+                fields[k] = json.dumps(v, ensure_ascii=False)
+
+        cols = ", ".join(fields.keys())
+        placeholders = ", ".join("?" for _ in fields)
+        cursor = db.execute(
+            f"INSERT INTO positions ({cols}) VALUES ({placeholders})",
+            list(fields.values()),
+        )
+        db.commit()
+        row = db.execute("SELECT * FROM positions WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        return dict_from_row(row)
+    finally:
+        db.close()
+
+
+@app.get("/api/positions/{position_id}")
+def get_position(position_id: int):
+    db = get_db()
+    try:
+        row = db.execute("SELECT * FROM positions WHERE id = ?", (position_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Position not found")
+        result = dict_from_row(row)
+
+        # Get linked profiles
+        profile_rows = db.execute(
+            """SELECT cp.* FROM candidate_profiles cp
+               JOIN position_profiles pp ON cp.id = pp.profile_id
+               WHERE pp.position_id = ?
+               ORDER BY cp.created_at DESC""",
+            (position_id,),
+        ).fetchall()
+        result["profiles"] = [dict_from_row(r) for r in profile_rows]
+
+        return result
+    finally:
+        db.close()
+
+
+@app.put("/api/positions/{position_id}")
+def update_position(position_id: int, data: PositionUpdate):
+    db = get_db()
+    try:
+        updates = []
+        params = []
+        for field, value in data.model_dump(exclude_none=True).items():
+            if isinstance(value, (list, dict)):
+                value = json.dumps(value, ensure_ascii=False)
+            updates.append(f"{field} = ?")
+            params.append(value)
+
+        if not updates:
+            raise HTTPException(400, "No fields to update")
+
+        updates.append("updated_at = ?")
+        params.append(datetime.now().isoformat())
+        params.append(position_id)
+
+        db.execute(f"UPDATE positions SET {', '.join(updates)} WHERE id = ?", params)
+        db.commit()
+        row = db.execute("SELECT * FROM positions WHERE id = ?", (position_id,)).fetchone()
+        return dict_from_row(row)
+    finally:
+        db.close()
+
+
+@app.delete("/api/positions/{position_id}")
+def delete_position(position_id: int):
+    db = get_db()
+    try:
+        db.execute("DELETE FROM positions WHERE id = ?", (position_id,))
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+# ── Position-Profile linking ────────────────────────────────
+
+
+@app.post("/api/positions/{position_id}/profiles")
+def link_profile(position_id: int, data: PositionProfileLink):
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT OR IGNORE INTO position_profiles (position_id, profile_id) VALUES (?, ?)",
+            (position_id, data.profile_id),
+        )
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+@app.delete("/api/positions/{position_id}/profiles/{profile_id}")
+def unlink_profile(position_id: int, profile_id: int):
+    db = get_db()
+    try:
+        db.execute(
+            "DELETE FROM position_profiles WHERE position_id = ? AND profile_id = ?",
+            (position_id, profile_id),
+        )
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+# ── Candidate Profiles CRUD ─────────────────────────────────
+
+
+@app.get("/api/profiles")
+def list_profiles(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    search: str = "",
+):
+    db = get_db()
+    try:
+        conditions = []
+        params = []
+
+        if search:
+            like = f"%{search}%"
+            conditions.append("(name LIKE ? OR description LIKE ?)")
+            params.extend([like] * 2)
+
+        where = " AND ".join(conditions) if conditions else "1=1"
+        total = db.execute(f"SELECT COUNT(*) as cnt FROM candidate_profiles WHERE {where}", params).fetchone()["cnt"]
+        offset = (page - 1) * page_size
+        rows = db.execute(
+            f"SELECT * FROM candidate_profiles WHERE {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            params + [page_size, offset],
+        ).fetchall()
+
+        return {
+            "items": [dict_from_row(r) for r in rows],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": max(1, (total + page_size - 1) // page_size),
+        }
+    finally:
+        db.close()
+
+
+@app.post("/api/profiles")
+def create_profile(data: ProfileCreate):
+    db = get_db()
+    try:
+        fields = data.model_dump()
+        for k, v in fields.items():
+            if isinstance(v, (list, dict)):
+                fields[k] = json.dumps(v, ensure_ascii=False)
+
+        cols = ", ".join(fields.keys())
+        placeholders = ", ".join("?" for _ in fields)
+        cursor = db.execute(
+            f"INSERT INTO candidate_profiles ({cols}) VALUES ({placeholders})",
+            list(fields.values()),
+        )
+        db.commit()
+        row = db.execute("SELECT * FROM candidate_profiles WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        return dict_from_row(row)
+    finally:
+        db.close()
+
+
+@app.get("/api/profiles/{profile_id}")
+def get_profile(profile_id: int):
+    db = get_db()
+    try:
+        row = db.execute("SELECT * FROM candidate_profiles WHERE id = ?", (profile_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Profile not found")
+        return dict_from_row(row)
+    finally:
+        db.close()
+
+
+@app.put("/api/profiles/{profile_id}")
+def update_profile(profile_id: int, data: ProfileUpdate):
+    db = get_db()
+    try:
+        updates = []
+        params = []
+        for field, value in data.model_dump(exclude_none=True).items():
+            if isinstance(value, (list, dict)):
+                value = json.dumps(value, ensure_ascii=False)
+            updates.append(f"{field} = ?")
+            params.append(value)
+
+        if not updates:
+            raise HTTPException(400, "No fields to update")
+
+        updates.append("updated_at = ?")
+        params.append(datetime.now().isoformat())
+        params.append(profile_id)
+
+        db.execute(f"UPDATE candidate_profiles SET {', '.join(updates)} WHERE id = ?", params)
+        db.commit()
+        row = db.execute("SELECT * FROM candidate_profiles WHERE id = ?", (profile_id,)).fetchone()
+        return dict_from_row(row)
+    finally:
+        db.close()
+
+
+@app.delete("/api/profiles/{profile_id}")
+def delete_profile(profile_id: int):
+    db = get_db()
+    try:
+        db.execute("DELETE FROM candidate_profiles WHERE id = ?", (profile_id,))
+        db.commit()
+        return {"ok": True}
+    finally:
+        db.close()
+
+
+# ── Smart Matching ───────────────────────────────────────────
+
+
+@app.get("/api/positions/{position_id}/match")
+async def match_resumes(position_id: int, limit: int = Query(20, ge=1, le=100)):
+    """Score and rank resumes against a position and its profiles."""
+    db = get_db()
+    try:
+        pos = db.execute("SELECT * FROM positions WHERE id = ?", (position_id,)).fetchone()
+        if not pos:
+            raise HTTPException(404, "Position not found")
+        pos = dict_from_row(pos)
+
+        # Get linked profiles
+        profile_rows = db.execute(
+            """SELECT cp.* FROM candidate_profiles cp
+               JOIN position_profiles pp ON cp.id = pp.profile_id
+               WHERE pp.position_id = ?""",
+            (position_id,),
+        ).fetchall()
+        profiles = [dict_from_row(r) for r in profile_rows]
+
+        # Get parsed resumes
+        resumes = db.execute(
+            "SELECT * FROM resumes WHERE parse_status = 'parsed' ORDER BY updated_at DESC LIMIT 200"
+        ).fetchall()
+        resumes = [dict_from_row(r) for r in resumes]
+
+        scored = []
+        for resume in resumes:
+            score, details = _compute_match_score(resume, pos, profiles)
+            scored.append({
+                "resume": resume,
+                "score": score,
+                "details": details,
+            })
+
+        scored.sort(key=lambda x: -x["score"])
+        return scored[:limit]
+    finally:
+        db.close()
+
+
+def _compute_match_score(resume: dict, position: dict, profiles: list[dict]) -> tuple[float, dict]:
+    """Compute match score (0-100) between a resume and position+profiles."""
+    details = {}
+    total = 0.0
+    weight_sum = 0.0
+
+    # 1. Skills match (weight: 35)
+    pos_skills = set(s.lower() for s in (position.get("skills_required") or []))
+    profile_skills_req = set()
+    profile_skills_pref = set()
+    for p in profiles:
+        profile_skills_req.update(s.lower() for s in (p.get("skills_required") or []))
+        profile_skills_pref.update(s.lower() for s in (p.get("skills_preferred") or []))
+
+    all_required = pos_skills | profile_skills_req
+    resume_skills = set(s.lower() for s in (resume.get("skills") or []))
+
+    if all_required:
+        matched = resume_skills & all_required
+        skill_score = len(matched) / len(all_required) * 100
+        details["skills_required"] = {"matched": list(matched), "total": len(all_required), "score": round(skill_score)}
+        total += skill_score * 35
+        weight_sum += 35
+    else:
+        weight_sum += 0
+
+    if profile_skills_pref:
+        matched_pref = resume_skills & profile_skills_pref
+        pref_score = len(matched_pref) / len(profile_skills_pref) * 100
+        details["skills_preferred"] = {"matched": list(matched_pref), "total": len(profile_skills_pref), "score": round(pref_score)}
+        total += pref_score * 10
+        weight_sum += 10
+
+    # 2. Experience match (weight: 25)
+    exp_min = position.get("experience_min", 0)
+    exp_max = position.get("experience_max", 100)
+    for p in profiles:
+        exp_min = max(exp_min, p.get("experience_min", 0))
+        if p.get("experience_max", 0) > 0:
+            exp_max = min(exp_max, p.get("experience_max", 100))
+
+    resume_exp = resume.get("years_experience", 0) or 0
+    if exp_max > 0:
+        if exp_min <= resume_exp <= exp_max:
+            exp_score = 100
+        elif resume_exp < exp_min:
+            exp_score = max(0, 100 - (exp_min - resume_exp) * 20)
+        else:
+            exp_score = max(0, 100 - (resume_exp - exp_max) * 10)
+        details["experience"] = {"resume": resume_exp, "required": f"{exp_min}-{exp_max}", "score": round(exp_score)}
+        total += exp_score * 25
+        weight_sum += 25
+
+    # 3. Education match (weight: 20)
+    edu_levels = {"高中": 1, "大专": 2, "专科": 2, "本科": 3, "学士": 3, "硕士": 4, "研究生": 4, "博士": 5, "MBA": 4}
+    req_edu = position.get("education_requirement", "")
+    for p in profiles:
+        if p.get("education_requirement"):
+            req_edu = p["education_requirement"]
+            break
+
+    if req_edu:
+        req_level = 0
+        for k, v in edu_levels.items():
+            if k in req_edu:
+                req_level = max(req_level, v)
+
+        resume_edu = resume.get("education", "")
+        resume_level = 0
+        for k, v in edu_levels.items():
+            if k in resume_edu:
+                resume_level = max(resume_level, v)
+
+        if resume_level >= req_level:
+            edu_score = 100
+        elif resume_level > 0:
+            edu_score = max(0, 100 - (req_level - resume_level) * 30)
+        else:
+            edu_score = 50  # unknown education
+        details["education"] = {"resume": resume_edu, "required": req_edu, "score": round(edu_score)}
+        total += edu_score * 20
+        weight_sum += 20
+
+    # 4. Title relevance (weight: 10)
+    pos_title = position.get("title", "").lower()
+    resume_title = (resume.get("current_title") or "").lower()
+    expected = [p.lower() for p in (resume.get("expected_positions") or [])]
+
+    if pos_title:
+        title_score = 0
+        if pos_title in resume_title or resume_title in pos_title:
+            title_score = 100
+        elif any(pos_title in e or e in pos_title for e in expected):
+            title_score = 80
+        elif any(word in resume_title for word in pos_title.split() if len(word) > 1):
+            title_score = 50
+        details["title"] = {"score": round(title_score)}
+        total += title_score * 10
+        weight_sum += 10
+
+    final_score = total / weight_sum if weight_sum > 0 else 0
+    return round(final_score, 1), details
+
+
+# ── Speech to Text ───────────────────────────────────────────
+
+
+@app.post("/api/speech-to-text")
+async def speech_to_text(file: UploadFile = File(...)):
+    """Convert speech audio to text using a simple approach."""
+    if not file.filename:
+        raise HTTPException(400, "No filename")
+
+    content = await file.read()
+    # Save temp file
+    temp_path = os.path.join(os.path.dirname(__file__), f"_temp_audio_{file.filename}")
+    try:
+        with open(temp_path, "wb") as f:
+            f.write(content)
+
+        # Try using whisper via API if available, otherwise return placeholder
+        try:
+            import subprocess
+            # Try using local whisper if installed
+            result = subprocess.run(
+                ["whisper", temp_path, "--model", "base", "--language", "zh", "--output_format", "txt", "--output_dir", os.path.dirname(temp_path)],
+                capture_output=True, text=True, timeout=60,
+            )
+            txt_path = temp_path.rsplit(".", 1)[0] + ".txt"
+            if os.path.exists(txt_path):
+                with open(txt_path, "r") as f:
+                    text = f.read().strip()
+                os.remove(txt_path)
+                return {"text": text}
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        return {"text": "", "error": "Whisper not available. Please install: pip install openai-whisper"}
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 # ── Serve frontend static files ──────────────────────────────

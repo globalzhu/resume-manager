@@ -65,6 +65,54 @@ def init_db():
             INSERT INTO resume_fts(rowid, name, phone, email, education, current_title, skills, summary, notes)
             VALUES (new.id, new.name, new.phone, new.email, new.education, new.current_title, new.skills, new.summary, new.notes);
         END;
+
+        -- Positions table (招聘岗位)
+        CREATE TABLE IF NOT EXISTS positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL DEFAULT '',
+            department TEXT DEFAULT '',
+            location TEXT DEFAULT '',
+            salary_min REAL DEFAULT 0,
+            salary_max REAL DEFAULT 0,
+            experience_min REAL DEFAULT 0,
+            experience_max REAL DEFAULT 0,
+            education_requirement TEXT DEFAULT '',
+            description TEXT DEFAULT '',
+            requirements TEXT DEFAULT '[]',
+            skills_required TEXT DEFAULT '[]',
+            status TEXT DEFAULT 'open',
+            headcount INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+
+        -- Candidate profiles table (候选人画像)
+        CREATE TABLE IF NOT EXISTS candidate_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL DEFAULT '',
+            description TEXT DEFAULT '',
+            education_requirement TEXT DEFAULT '',
+            experience_min REAL DEFAULT 0,
+            experience_max REAL DEFAULT 0,
+            skills_required TEXT DEFAULT '[]',
+            skills_preferred TEXT DEFAULT '[]',
+            personality_traits TEXT DEFAULT '[]',
+            certifications TEXT DEFAULT '[]',
+            notes TEXT DEFAULT '',
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+
+        -- Position-Profile association table
+        CREATE TABLE IF NOT EXISTS position_profiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            position_id INTEGER NOT NULL,
+            profile_id INTEGER NOT NULL,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
+            FOREIGN KEY (profile_id) REFERENCES candidate_profiles(id) ON DELETE CASCADE,
+            UNIQUE(position_id, profile_id)
+        );
     """)
     conn.close()
 
@@ -73,7 +121,12 @@ def dict_from_row(row):
     if row is None:
         return None
     d = dict(row)
-    for key in ("expected_positions", "skills", "work_history", "education_history", "tags"):
+    json_keys = (
+        "expected_positions", "skills", "work_history", "education_history", "tags",
+        "requirements", "skills_required", "skills_preferred",
+        "personality_traits", "certifications",
+    )
+    for key in json_keys:
         if key in d and isinstance(d[key], str):
             try:
                 d[key] = json.loads(d[key])
